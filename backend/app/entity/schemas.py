@@ -1,6 +1,13 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from datetime import datetime
+
+
+class ApiResponse(BaseModel):
+    """通用 API 响应"""
+    code: int = Field(default=200, description="状态码")
+    message: str = Field(default="success", description="响应消息")
+    data: Optional[Any] = Field(default=None, description="响应数据")
 
 class UserRegister(BaseModel):
     """用户注册请求"""

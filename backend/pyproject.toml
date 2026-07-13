@@ -1,5 +1,5 @@
 [project]
-name = "xjtu-visagent"
+name = "NutriMind-Agent"
 version = "0.1.0"
 description = "基于 YOLOv11 的目标检测智能体平台 API"
 requires-python = ">=3.11"

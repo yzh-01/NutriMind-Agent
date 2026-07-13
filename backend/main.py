@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.config.settings import settings
+from app.api.knowledge import router as knowledge_router
 
 # 应用生命周期管理
 @asynccontextmanager
@@ -17,7 +18,7 @@ async def lifespan(_app: FastAPI):
 
 # 创建 FastAPI 实例
 app = FastAPI(
-    title="XJTU—VisAgent",
+    title="NutriMind-Agent",
     version="0.1.0",
     description="基于 YOLOv11 的目标检测智能体平台 API",
     docs_url="/docs",
@@ -31,6 +32,7 @@ from app.api.health import router as health_router
 
 app.include_router(auth_router)
 app.include_router(health_router)
+app.include_router(knowledge_router)
 
 
 def start():
