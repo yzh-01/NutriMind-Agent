@@ -14,11 +14,11 @@ from app.entity.db_models import User
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge", tags=["知识库"])
 
-ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt", ".text"}
+ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt", ".text", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 @router.post("/upload", response_model=ApiResponse)
 async def upload_document(
-    file: UploadFile = File(..., description="文档文件 (PDF/MD/TXT)"),
+    file: UploadFile = File(..., description="文档文件 (PDF/MD/TXT) 或图片 (PNG/JPG)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

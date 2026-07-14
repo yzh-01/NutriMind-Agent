@@ -23,14 +23,15 @@ class KnowledgeService:
             return
 
         try:
-            from langchain.text_splitter import RecursiveCharacterTextSplitter
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
             from langchain_openai import OpenAIEmbeddings
             from langchain_community.vectorstores import PGVector
 
             # 1. 初始化 Embeddings
             self.embeddings = OpenAIEmbeddings(
                 openai_api_key=settings.OPENAI_API_KEY,
-                openai_api_base=settings.OPENAI_BASE_URL
+                openai_api_base=settings.OPENAI_BASE_URL,
+                model="Qwen/Qwen3-Embedding-8B"
             )
 
             # 2. 初始化文本分割器
@@ -53,7 +54,7 @@ class KnowledgeService:
     def _init_vector_store(self):
         """初始化 PgVector"""
         from langchain_community.vectorstores import PGVector
-        connection_string = settings.database_url
+        connection_string = settings.DATABASE_URL
         self.vector_store = PGVector(
             connection_string=connection_string,
             embedding_function=self.embeddings,
@@ -76,6 +77,9 @@ class KnowledgeService:
             elif file_ext in [".txt", ".text"]:
                 from langchain_community.document_loaders import TextLoader
                 loader = TextLoader(file_path, encoding="utf-8")
+            elif file_ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"]:
+                # 图片文件使用多模态模型提取描述
+                return self._process_image(file_path)
             else:
                 logger.warning(f"不支持的文件类型：{file_ext}")
                 return []
@@ -84,6 +88,71 @@ class KnowledgeService:
             return documents
         except Exception as e:
             logger.error(f"加载文档失败 {file_path}: {e}")
+            return []
+
+    def _process_image(self, file_path: str) -> List[Any]:
+        """使用多模态模型提取图片描述"""
+        from langchain_core.documents import Document
+        from app.config.settings import settings
+        import base64
+        
+        try:
+            # 读取图片并转为 base64
+            with open(file_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+            
+            # 使用 OpenAI API 调用多模态模型
+            from openai import OpenAI
+            
+            client = OpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL
+            )
+            
+            # 构建消息
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_data}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "请详细描述这张图片的内容，包括场景、物体、文字等信息。"
+                        }
+                    ]
+                }
+            ]
+            
+            # 调用模型
+            response = client.chat.completions.create(
+                model="Qwen/Qwen3-VL-8B-Instruct",
+                messages=messages,
+                max_tokens=500
+            )
+            
+            # 提取描述文本
+            description = response.choices[0].message.content
+            
+            logger.info(f"图片描述提取成功：{file_path}")
+            
+            # 返回 Document 对象
+            doc = Document(
+                page_content=description,
+                metadata={
+                    "source": file_path,
+                    "file_name": Path(file_path).name,
+                    "type": "image"
+                }
+            )
+            return [doc]
+            
+        except Exception as e:
+            logger.error(f"图片处理失败 {file_path}: {e}")
             return []
 
     def split_document(self, documents: List[Any]) -> List[Any]:
@@ -152,7 +221,7 @@ class KnowledgeService:
         try:
             # 使用 SQLAlchemy 直接操作表
             from sqlalchemy import create_engine, text
-            engine = create_engine(settings.database_url)
+            engine = create_engine(settings.DATABASE_URL)
             with engine.connect() as conn:
                 sql = text(
                     "DELETE FROM langchain_pg_embedding "
@@ -172,7 +241,7 @@ class KnowledgeService:
         self._initialize()
         try:
             from sqlalchemy import create_engine, text
-            engine = create_engine(settings.database_url)
+            engine = create_engine(settings.DATABASE_URL)
             with engine.connect() as conn:
                 # 总块数
                 count_sql = text("SELECT COUNT(*) FROM langchain_pg_embedding")
