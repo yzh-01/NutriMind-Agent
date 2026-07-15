@@ -9,27 +9,32 @@ class ApiResponse(BaseModel):
     message: str = Field(default="success", description="响应消息")
     data: Optional[Any] = Field(default=None, description="响应数据")
 
+
 class UserRegister(BaseModel):
     """用户注册请求"""
     username: str = Field(..., min_length=3, max_length=50, description="用户名")
     email: EmailStr = Field(..., description="邮箱")
     password: str = Field(..., min_length=6, description="密码")
 
+
 class UserLogin(BaseModel):
     """用户登录请求"""
     username: str = Field(..., description="用户名")
     password: str = Field(..., description="密码")
+
 
 class ChangePassword(BaseModel):
     """修改密码请求"""
     old_password: str = Field(..., description="旧密码")
     new_password: str = Field(..., min_length=6, description="新密码")
 
+
 class UserUpdate(BaseModel):
     """用户更新请求"""
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     avatar: Optional[str] = None
+
 
 class UserResponse(BaseModel):
     """用户响应"""

@@ -22,6 +22,13 @@ dependencies = [
     "pypdf>=4.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "httpx>=0.24.0",
+]
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -33,4 +40,9 @@ include = ["app*"]
 [project.scripts]
 main = "main:start"
 [tool.setuptools]
-py-modules = ["main"] 
+py-modules = ["main"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+] 
