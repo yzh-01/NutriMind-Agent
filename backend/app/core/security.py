@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.config.settings import settings
@@ -63,6 +63,7 @@ def decode_access_token(token: str) -> dict:
 
 
 async def get_current_user(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
@@ -71,9 +72,7 @@ async def get_current_user(
 
     # 如果 Header 中没有 Token，尝试从 Cookie 获取
     if not token:
-        # 注意：这⾥需要通过其他⽅式获取 request
-        # 实际实现中使⽤ middleware 或 context
-        pass
+        token = request.cookies.get("access_token")
 
     if not token:
         raise HTTPException(
