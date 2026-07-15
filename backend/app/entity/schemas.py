@@ -228,3 +228,61 @@ class PaginationParams(BaseModel):
     """分页参数"""
     page: int = Field(default=1, ge=1, description="页码")
     page_size: int = Field(default=20, ge=1, le=100, description="每页大小")
+
+
+# ============================================================
+# Dashboard 看板相关 Schema
+# ============================================================
+
+class DashboardOverview(BaseModel):
+    """看板总览数据"""
+    total_users: int = Field(default=0, description="用户总数")
+    active_users: int = Field(default=0, description="活跃用户数")
+    total_detection_scenes: int = Field(default=0, description="检测场景总数")
+    total_detection_tasks: int = Field(default=0, description="检测任务总数")
+    total_training_tasks: int = Field(default=0, description="训练任务总数")
+    total_food_items: int = Field(default=0, description="食物营养数据条数")
+
+
+class TaskStatusCount(BaseModel):
+    """任务状态统计"""
+    status: str = Field(..., description="状态")
+    count: int = Field(default=0, description="数量")
+
+
+class DetectionStats(BaseModel):
+    """检测任务统计"""
+    total: int = Field(default=0, description="检测任务总数")
+    completed: int = Field(default=0, description="已完成数")
+    failed: int = Field(default=0, description="失败数")
+    pending: int = Field(default=0, description="等待中数")
+    processing: int = Field(default=0, description="处理中数")
+    total_objects_detected: int = Field(default=0, description="累计检测目标数")
+    avg_inference_time: Optional[float] = Field(
+        default=None, description="平均推理耗时（秒）")
+
+
+class TrainingStats(BaseModel):
+    """训练任务统计"""
+    total: int = Field(default=0, description="训练任务总数")
+    completed: int = Field(default=0, description="已完成数")
+    failed: int = Field(default=0, description="失败数")
+    running: int = Field(default=0, description="运行中数")
+    pending: int = Field(default=0, description="等待中数")
+    paused: int = Field(default=0, description="已暂停数")
+
+
+class UserStats(BaseModel):
+    """用户统计"""
+    total: int = Field(default=0, description="用户总数")
+    active: int = Field(default=0, description="启用用户数")
+    superusers: int = Field(default=0, description="管理员数")
+    new_today: int = Field(default=0, description="今日新增")
+
+
+class DashboardStats(BaseModel):
+    """看板完整统计数据"""
+    overview: DashboardOverview
+    detection: DetectionStats
+    training: TrainingStats
+    users: UserStats
