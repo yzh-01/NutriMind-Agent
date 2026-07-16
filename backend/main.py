@@ -4,6 +4,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.camera import router as camera_router
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.api.knowledge import router as knowledge_router
 from app.core.logger import setup_logger, get_logger
@@ -36,6 +37,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
+)
+
+# 注册 CORS 中间件（必须在其他中间件之前）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS_LIST,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 注册请求日志中间件
