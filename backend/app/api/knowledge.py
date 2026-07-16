@@ -39,7 +39,7 @@ async def upload_document(
 
     try:
         # 3. 上传到知识库
-        chunks_count = await knowledge_service.embed_and_store(tmp_path)
+        chunks_count = await knowledge_service.embed_and_store(tmp_path, current_user.id)
         if chunks_count == 0:
             raise HTTPException(status_code=400, detail="文档处理失败，未生成有效内容")
 
@@ -69,7 +69,7 @@ async def search_knowledge(
         raise HTTPException(status_code=400, detail="查询内容不能为空")
 
     try:
-        results = await knowledge_service.search(query, k=k)
+        results = await knowledge_service.search(query, k=k, user_id=current_user.id)
         return ApiResponse(
             code=200,
             data={
@@ -93,7 +93,7 @@ async def delete_document(
         raise HTTPException(status_code=400, detail="文档来源不能为空")
 
     try:
-        success = await knowledge_service.delete_by_source(source)
+        success = await knowledge_service.delete_by_source(source, current_user.id)
         if not success:
             raise HTTPException(status_code=404, detail="未找到指定文档")
         return ApiResponse(code=200, message="文档删除成功")
@@ -110,7 +110,7 @@ async def get_knowledge_stats(
 ):
     """获取知识库统计信息"""
     try:
-        stats = await knowledge_service.get_collection_stats()
+        stats = await knowledge_service.get_collection_stats(current_user.id)
         return ApiResponse(code=200, data=stats)
     except Exception as e:
         logger.error(f"获取知识库统计失败: {e}")

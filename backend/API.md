@@ -406,7 +406,7 @@ GET /api/knowledge/stats
 
 ## 5. 数据看板
 
-> 所有接口需要认证：`Authorization: Bearer {access_token}`
+> 🔐 需要**管理员权限**（`is_superuser=true`），普通用户返回 403。
 
 ### 5.1 总览
 
@@ -658,6 +658,6 @@ DELETE /api/camera/{image_id}
 |------|:--:|
 | Camera 用户隔离 | ✅ 文件名内置 user_id，列表/查看/删除均校验 |
 | Camera 路径暴露 | ✅ 不返回服务器绝对路径 |
-| 知识库用户隔离 | ❌ 当前为全局共享 |
-| Dashboard 权限 | ❌ 当前仅需登录，未限制管理员 |
+| 知识库用户隔离 | ✅ 上传绑定 user_id，搜索/删除/统计按用户过滤 |
+| Dashboard 权限 | ✅ 仅管理员（is_superuser）可访问 |
 | DEBUG 模式 | ⚠️ 默认 `true`，生产应设为 `false` |

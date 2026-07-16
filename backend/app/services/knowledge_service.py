@@ -166,7 +166,7 @@ class KnowledgeService:
             logger.error(f"文档分块失败: {e}")
             return []
 
-    async def embed_and_store(self, file_path: str) -> int:
+    async def embed_and_store(self, file_path: str, user_id: int = 0) -> int:
         """加载、分块、向量化并存储文档"""
         self._initialize()
         try:
@@ -180,10 +180,11 @@ class KnowledgeService:
             if not chunks:
                 return 0
 
-            # 添加元数据
+            # 添加元数据（含 user_id 用于用户隔离）
             for chunk in chunks:
                 chunk.metadata["source"] = file_path
                 chunk.metadata["file_name"] = Path(file_path).name
+                chunk.metadata["user_id"] = str(user_id)
 
             # 存储到向量库（add_documents 是同步方法，但可能耗时）
             await asyncio.to_thread(self.vector_store.add_documents, chunks)
@@ -193,41 +194,46 @@ class KnowledgeService:
             logger.error(f"向量化存储失败: {e}")
             return 0
 
-    async def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
-        """语义检索"""
+    async def search(self, query: str, k: int = 5, user_id: int = 0) -> List[Dict[str, Any]]:
+        """语义检索（可选按用户过滤）。"""
         self._initialize()
         try:
             import asyncio
-            # similarity_search_with_score 返回 (Document, score) 列表
+            # 多取一些结果再过滤，保证返回 k 条
+            fetch_k = k * 3 if user_id else k
             results = await asyncio.to_thread(
-                self.vector_store.similarity_search_with_score, query, k=k
+                self.vector_store.similarity_search_with_score, query, k=fetch_k
             )
             formatted = []
             for doc, score in results:
+                if user_id and doc.metadata.get("user_id") != str(user_id):
+                    continue
                 formatted.append({
                     "content": doc.page_content,
                     "metadata": doc.metadata,
                     "score": float(score)
                 })
+                if len(formatted) >= k:
+                    break
             logger.info(f"知识库检索完成: query={query[:50]}..., 结果数={len(formatted)}")
             return formatted
         except Exception as e:
             logger.error(f"知识库检索失败: {e}")
             return []
 
-    async def delete_by_source(self, source: str) -> bool:
-        """按来源删除文档（删除 metadata 中 source 匹配的所有块）"""
+    async def delete_by_source(self, source: str, user_id: int = 0) -> bool:
+        """按来源删除文档（仅允许删除自己上传的）。"""
         self._initialize()
         try:
-            # 使用 SQLAlchemy 直接操作表
             from sqlalchemy import create_engine, text
             engine = create_engine(settings.DATABASE_URL)
             with engine.connect() as conn:
                 sql = text(
                     "DELETE FROM langchain_pg_embedding "
-                    "WHERE cmetadata->>'source' = :source"
+                    "WHERE cmetadata->>'source' = :source "
+                    "AND cmetadata->>'user_id' = :user_id"
                 )
-                result = conn.execute(sql, {"source": source})
+                result = conn.execute(sql, {"source": source, "user_id": str(user_id)})
                 conn.commit()
                 deleted = result.rowcount
                 logger.info(f"删除文档 {source}，共删除 {deleted} 个块")
@@ -236,30 +242,37 @@ class KnowledgeService:
             logger.error(f"删除文档失败: {e}")
             return False
 
-    async def get_collection_stats(self) -> Dict[str, Any]:
-        """获取统计信息"""
+    async def get_collection_stats(self, user_id: int = 0) -> Dict[str, Any]:
+        """获取统计信息（可选按用户过滤）。"""
         self._initialize()
         try:
             from sqlalchemy import create_engine, text
             engine = create_engine(settings.DATABASE_URL)
             with engine.connect() as conn:
-                # 总块数
-                count_sql = text("SELECT COUNT(*) FROM langchain_pg_embedding")
-                total = conn.execute(count_sql).scalar() or 0
-
-                # 按来源分组统计
-                group_sql = text(
-                    "SELECT cmetadata->>'source' as source, COUNT(*) as count "
-                    "FROM langchain_pg_embedding "
-                    "GROUP BY cmetadata->>'source'"
-                )
-                rows = conn.execute(group_sql).fetchall()
+                if user_id:
+                    count_sql = text(
+                        "SELECT COUNT(*) FROM langchain_pg_embedding "
+                        "WHERE cmetadata->>'user_id' = :uid"
+                    )
+                    total = conn.execute(count_sql, {"uid": str(user_id)}).scalar() or 0
+                    group_sql = text(
+                        "SELECT cmetadata->>'source' as source, COUNT(*) as count "
+                        "FROM langchain_pg_embedding "
+                        "WHERE cmetadata->>'user_id' = :uid "
+                        "GROUP BY cmetadata->>'source'"
+                    )
+                    rows = conn.execute(group_sql, {"uid": str(user_id)}).fetchall()
+                else:
+                    count_sql = text("SELECT COUNT(*) FROM langchain_pg_embedding")
+                    total = conn.execute(count_sql).scalar() or 0
+                    group_sql = text(
+                        "SELECT cmetadata->>'source' as source, COUNT(*) as count "
+                        "FROM langchain_pg_embedding "
+                        "GROUP BY cmetadata->>'source'"
+                    )
+                    rows = conn.execute(group_sql).fetchall()
                 sources = [{"source": row[0], "count": row[1]} for row in rows]
-
-                return {
-                    "total_chunks": total,
-                    "sources": sources
-                }
+                return {"total_chunks": total, "sources": sources}
         except Exception as e:
             logger.error(f"获取统计信息失败: {e}")
             return {"total_chunks": 0, "sources": []}

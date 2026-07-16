@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "liu13568610305"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    # REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 暂未实现 Refresh Token 接口
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 注意：Refresh Token 接口尚未实现
 
     # 大模型配置（实际值从 .env 加载）
     OPENAI_API_KEY: str = ""

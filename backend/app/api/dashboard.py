@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.database.session import get_db
 from app.entity.db_models import (
     DetectionScene,
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["看板"])
 @router.get("/overview", response_model=ApiResponse)
 async def get_overview(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取系统总览数据（需登录）"""
     logger.info(f"用户 {current_user.username} 请求看板总览")
@@ -67,7 +67,7 @@ async def get_overview(
 @router.get("/detection", response_model=ApiResponse)
 async def get_detection_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取检测任务统计（需登录）"""
     logger.info(f"用户 {current_user.username} 请求检测统计")
@@ -108,7 +108,7 @@ async def get_detection_stats(
 @router.get("/training", response_model=ApiResponse)
 async def get_training_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取训练任务统计（需登录）"""
     logger.info(f"用户 {current_user.username} 请求训练统计")
@@ -143,7 +143,7 @@ async def get_training_stats(
 @router.get("/users", response_model=ApiResponse)
 async def get_user_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取用户统计（需登录）"""
     logger.info(f"用户 {current_user.username} 请求用户统计")
@@ -175,7 +175,7 @@ async def get_user_stats(
 @router.get("/stats", response_model=ApiResponse)
 async def get_full_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取完整看板统计数据（需登录）"""
     logger.info(f"用户 {current_user.username} 请求完整看板统计")
@@ -271,7 +271,7 @@ async def get_full_stats(
 @router.get("/detection/status-distribution", response_model=ApiResponse)
 async def get_detection_status_distribution(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取检测任务各状态数量分布（需登录）"""
     logger.info(f"用户 {current_user.username} 请求检测状态分布")
@@ -300,7 +300,7 @@ async def get_detection_status_distribution(
 @router.get("/training/status-distribution", response_model=ApiResponse)
 async def get_training_status_distribution(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """获取训练任务各状态数量分布（需登录）"""
     logger.info(f"用户 {current_user.username} 请求训练状态分布")
