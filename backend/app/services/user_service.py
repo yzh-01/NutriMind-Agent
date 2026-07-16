@@ -92,6 +92,10 @@ class UserService:
         if not verify_password(old_password, user.hashed_password):
             raise ValueError("旧密码错误")
 
+        # 新旧密码不能相同
+        if old_password == new_password:
+            raise ValueError("新密码不能与旧密码相同")
+
         # 更新密码
         user.hashed_password = hash_password(new_password)
         db.commit()
