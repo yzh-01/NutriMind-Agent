@@ -1,15 +1,11 @@
 """
-检测服务模块 — YOLO26 模型加载、图片推理与结果解析。
+检测服务模块 — YOLOv11 模型加载、图片推理与结果解析。
 
 职责：
 - 模型单例缓存，防止每次请求重复加载导致 OOM
-- 异步执行 YOLO26 推理（通过 asyncio.to_thread 避免阻塞事件循环）
+- 异步执行 YOLOv11 推理（通过 asyncio.to_thread 避免阻塞事件循环）
 - 解析推理结果为标准 DetectionResponse Schema
 - 持久化检测记录到数据库
-
-YOLO26 特性说明：
-- 端到端无 NMS 设计，无需手动调节 NMS 阈值过滤冗余框
-- 原生搭载 STAL 机制和 ProgLoss，小目标/密集检测效果显著
 """
 
 import asyncio
@@ -26,7 +22,7 @@ from app.entity.schemas import BoundingBox, DetectionResponse
 
 
 class DetectionService:
-    """YOLO26 检测服务 — 管理模型加载与图片推理。"""
+    """YOLOv11 检测服务 — 管理模型加载与图片推理。"""
 
     def __init__(self) -> None:
         # 模型缓存字典：{model_path: YOLO_instance}
@@ -38,7 +34,7 @@ class DetectionService:
     # ------------------------------------------------------------------
 
     async def _load_model(self, model_path: str) -> object:
-        """异步加载 YOLO26 模型（通过 asyncio.to_thread 避免阻塞事件循环）。
+        """异步加载 YOLOv11 模型（通过 asyncio.to_thread 避免阻塞事件循环）。
 
         Args:
             model_path: 模型权重文件路径（如 data/models/best.pt）
@@ -110,7 +106,7 @@ class DetectionService:
             model_path = Path(scene.model_path)
         else:
             # 回退到全局默认模型路径
-            model_path = settings.MODELS_DIR / "best.pt"
+            model_path = settings.MODELS_DIR / "yolo11_food_best.pt"
 
         # 确保路径为绝对路径
         if not model_path.is_absolute():
@@ -140,7 +136,7 @@ class DetectionService:
     def _parse_yolo_results(
         self, results, db: Session, scene_id: int
     ) -> tuple[list[BoundingBox], int]:
-        """解析 YOLO26 推理结果，提取检测框信息。
+        """解析 YOLOv11 推理结果，提取检测框信息。
 
         Args:
             results: ultralytics YOLO.predict() 的返回结果
@@ -195,7 +191,7 @@ class DetectionService:
         iou_threshold: float = 0.45,
         user_id: Optional[int] = None,
     ) -> DetectionResponse:
-        """从本地图片路径执行 YOLO26 检测。
+        """从本地图片路径执行 YOLOv11 检测。
 
         这是检测服务的核心方法，负责完整的：
         1. 模型加载（缓存命中/未命中）
@@ -289,7 +285,7 @@ class DetectionService:
         iou_threshold: float = 0.45,
         user_id: Optional[int] = None,
     ) -> DetectionResponse:
-        """从图片字节流执行 YOLO26 检测。
+        """从图片字节流执行 YOLOv11 检测。
 
         先将字节流写入临时文件，然后调用 detect_from_path。
         使用完毕后自动清理临时文件。

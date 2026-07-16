@@ -1,7 +1,7 @@
 """NutriMind-Agent 业务服务层（AI/算法工程师工作目录）。
 
 本层包含所有核心业务逻辑：
-- detection_service: YOLO26 模型加载与图片推理
+- detection_service: YOLOv11 模型加载与图片推理
 - training_service: 模型训练任务管理与后台训练执行
 - data_utils: 数据集准备与预处理工具
 - agent_graph: LangGraph Agent 编排

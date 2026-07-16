@@ -4,10 +4,10 @@ Agent 图编排模块 — 使用 LangGraph 将 LLM 与工具节点连接。
 职责：
 - 构建 StateGraph 定义 Agent 工作流（agent_node → 工具调用 → agent_node → END）
 - 编译可执行图（带内存检查点，支持多轮对话）
-- 提供 run_agent 入口函数，将 YOLO26 检测结果注入 Agent 上下文
+- 提供 run_agent 入口函数，将 YOLOv11 检测结果注入 Agent 上下文
 
 流程：
-    用户消息 + YOLO26 检测结果
+    用户消息 + YOLOv11 检测结果
         → agent_node (LLM 推理，决定是否调用工具)
         → router_node (条件路由: 工具调用 → tool_node, 否则 → END)
         → tool_node (执行工具后返回 agent_node)
@@ -50,7 +50,7 @@ class AgentState(TypedDict, total=False):
     """LangGraph Agent 的状态结构。
 
     messages: 对话历史（自动追加，使用 LangGraph 的 add_messages reducer）
-    detections: YOLO26 检测结果列表（可选，有检测结果时传入）
+    detections: YOLOv11 检测结果列表（可选，有检测结果时传入）
     user_id: 当前用户 ID（可选，用于个性化查询）
     analysis_result: 最终分析结果（Agent 完成后填充）
     """
@@ -93,7 +93,7 @@ AGENT_TOOLS = [
     StructuredTool.from_function(
         coroutine=save_detection_record,
         name="save_detection_record",
-        description="将 YOLO26 检测结果持久化保存到数据库。输入为 user_id(int), scene_id(int), detections_json(str)。",
+        description="将 YOLOv11 检测结果持久化保存到数据库。输入为 user_id(int), scene_id(int), detections_json(str)。",
     ),
 ]
 
@@ -243,7 +243,7 @@ async def run_agent(
 ) -> dict:
     """运行 Agent 管道的主入口函数。
 
-    将用户的自然语言消息和 YOLO26 检测结果一起传给 Agent，
+    将用户的自然语言消息和 YOLOv11 检测结果一起传给 Agent，
     由 LLM 驱动工具调用完成营养分析，最后返回结构化结果。
 
     典型用法：
@@ -257,7 +257,7 @@ async def run_agent(
     Args:
         session_id: 会话标识（用于 LangGraph 内存检查点，支持多轮对话）
         user_message: 用户的自然语言输入
-        detections: YOLO26 检测结果列表（可选）
+        detections: YOLOv11 检测结果列表（可选）
         user_id: 用户 ID（可选）
 
     Returns:
@@ -289,7 +289,7 @@ async def run_agent(
     if detections:
         detection_text = format_detection_for_prompt(detections)
         context_msg = (
-            "YOLO26 视觉模型检测到以下食物：\n\n"
+            "YOLOv11 视觉模型检测到以下食物：\n\n"
             f"{detection_text}\n\n"
             "请查询这些食物的营养数据，计算总营养，并给出饮食建议。"
         )

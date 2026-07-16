@@ -697,7 +697,7 @@ def run_prepare(
     print(f"   验证集图片: {validation['val']['images']}")
     print()
     print("下一步运行训练:")
-    print(f"   python train_yolo26.py --data {yaml_path}")
+    print(f"   python train_yolo.py --data {yaml_path}")
     print("=" * 60)
 
     return dataset_root

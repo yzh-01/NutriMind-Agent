@@ -8,4 +8,4 @@ router = APIRouter(prefix="/api/health", tags=["健康检查"])
 @router.get("")
 async def health_check():
     """健康检查。"""
-    return {"status": "ok", "message": "VisAgent API is running"}
+    return {"status": "ok", "message": "NutriMind-Agent API is running"}

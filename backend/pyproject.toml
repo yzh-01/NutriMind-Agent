@@ -23,6 +23,14 @@ dependencies = [
     "langchain-text-splitters>=1.0.0",
     "langgraph>=0.2.0",
     "pypdf>=4.0.0",
+    "pgvector>=0.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "httpx>=0.24.0",
 ]
 
 [project.optional-dependencies]
@@ -46,3 +54,8 @@ include = ["app*"]
 main = "main:start"
 [tool.setuptools]
 py-modules = ["main"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+] 

@@ -7,7 +7,7 @@
 - 将标注转换为 YOLO 格式（归一化坐标）
 - 自动生成 data.yaml 配置文件
 - 按比例划分训练/验证/测试集
-- 下载 ultralytics 预训练权重（yolo26n.pt 等）
+- 下载 ultralytics 预训练权重（yolo11n.pt 等）
 
 使用方式：
     # CLI 子命令
@@ -18,7 +18,7 @@
 
     # Python API
     from app.services.data_utils import download_pretrained_weights
-    path = download_pretrained_weights("yolo26n")
+    path = download_pretrained_weights("yolo11n")
 """
 
 import argparse
@@ -464,26 +464,26 @@ def split_dataset(
 # 预训练权重下载
 # ==================================================================
 
-# ultralytics 支持的 YOLO26 预训练模型
+# ultralytics 支持的 YOLOv11 预训练模型
 AVAILABLE_WEIGHTS = [
-    "yolo26n",   # YOLO26 Nano
-    "yolo26s",   # YOLO26 Small
-    "yolo26m",   # YOLO26 Medium
-    "yolo26l",   # YOLO26 Large
-    "yolo26x",   # YOLO26 XLarge
+    "yolo11n",   # YOLOv11 Nano
+    "yolo11s",   # YOLOv11 Small
+    "yolo11m",   # YOLOv11 Medium
+    "yolo11l",   # YOLOv11 Large
+    "yolo11x",   # YOLOv11 XLarge
 ]
 
 
 def download_pretrained_weights(
-    model_name: str = "yolo26n",
+    model_name: str = "yolo11n",
     output_dir: Optional[str] = None,
 ) -> Path:
-    """下载 ultralytics YOLO26 预训练权重文件。
+    """下载 ultralytics YOLOv11 预训练权重文件。
 
     首次调用时从 ultralytics 官方下载，后续使用本地缓存。
 
     Args:
-        model_name: 模型名称，如 "yolo26n", "yolo26s", "yolo26m"
+        model_name: 模型名称，如 "yolo11n", "yolo11s", "yolo11m"
         output_dir: 输出目录（可选，默认 data/models/）
 
     Returns:
@@ -571,7 +571,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # weights
     p_wt = sub.add_parser("weights", help="下载预训练权重")
-    p_wt.add_argument("--model", default="yolo26n", choices=AVAILABLE_WEIGHTS)
+    p_wt.add_argument("--model", default="yolo11n", choices=AVAILABLE_WEIGHTS)
     p_wt.add_argument("--output", default=None, help="输出目录")
 
     # generate-yaml

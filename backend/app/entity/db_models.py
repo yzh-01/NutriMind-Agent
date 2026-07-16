@@ -139,7 +139,7 @@ class TrainingTask(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, comment="提交用户 ID")
     scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=True, comment="关联场景 ID")
     task_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()), comment="任务唯一标识")
-    model_name = Column(String(100), nullable=False, default="yolo26n", comment="基础模型名称")
+    model_name = Column(String(100), nullable=False, default="yolo11s", comment="基础模型名称")
     data_yaml = Column(String(500), nullable=False, comment="数据集 data.yaml 路径")
     epochs = Column(Integer, nullable=False, default=100, comment="训练轮数")
     img_size = Column(Integer, default=640, comment="输入图像尺寸")

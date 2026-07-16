@@ -30,7 +30,8 @@ class KnowledgeService:
             # 1. 初始化 Embeddings
             self.embeddings = OpenAIEmbeddings(
                 openai_api_key=settings.OPENAI_API_KEY,
-                openai_api_base=settings.OPENAI_BASE_URL
+                openai_api_base=settings.OPENAI_BASE_URL,
+                model="Qwen/Qwen3-Embedding-8B"
             )
 
             # 2. 初始化文本分割器
@@ -76,6 +77,9 @@ class KnowledgeService:
             elif file_ext in [".txt", ".text"]:
                 from langchain_community.document_loaders import TextLoader
                 loader = TextLoader(file_path, encoding="utf-8")
+            elif file_ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"]:
+                # 图片文件使用多模态模型提取描述
+                return self._process_image(file_path)
             else:
                 logger.warning(f"不支持的文件类型：{file_ext}")
                 return []
@@ -84,6 +88,71 @@ class KnowledgeService:
             return documents
         except Exception as e:
             logger.error(f"加载文档失败 {file_path}: {e}")
+            return []
+
+    def _process_image(self, file_path: str) -> List[Any]:
+        """使用多模态模型提取图片描述"""
+        from langchain_core.documents import Document
+        from app.config.settings import settings
+        import base64
+        
+        try:
+            # 读取图片并转为 base64
+            with open(file_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+            
+            # 使用 OpenAI API 调用多模态模型
+            from openai import OpenAI
+            
+            client = OpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL
+            )
+            
+            # 构建消息
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_data}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "请详细描述这张图片的内容，包括场景、物体、文字等信息。"
+                        }
+                    ]
+                }
+            ]
+            
+            # 调用模型
+            response = client.chat.completions.create(
+                model="Qwen/Qwen3-VL-8B-Instruct",
+                messages=messages,
+                max_tokens=500
+            )
+            
+            # 提取描述文本
+            description = response.choices[0].message.content
+            
+            logger.info(f"图片描述提取成功：{file_path}")
+            
+            # 返回 Document 对象
+            doc = Document(
+                page_content=description,
+                metadata={
+                    "source": file_path,
+                    "file_name": Path(file_path).name,
+                    "type": "image"
+                }
+            )
+            return [doc]
+            
+        except Exception as e:
+            logger.error(f"图片处理失败 {file_path}: {e}")
             return []
 
     def split_document(self, documents: List[Any]) -> List[Any]:
@@ -97,7 +166,7 @@ class KnowledgeService:
             logger.error(f"文档分块失败: {e}")
             return []
 
-    async def embed_and_store(self, file_path: str) -> int:
+    async def embed_and_store(self, file_path: str, user_id: int = 0) -> int:
         """加载、分块、向量化并存储文档"""
         self._initialize()
         try:
@@ -111,10 +180,11 @@ class KnowledgeService:
             if not chunks:
                 return 0
 
-            # 添加元数据
+            # 添加元数据（含 user_id 用于用户隔离）
             for chunk in chunks:
                 chunk.metadata["source"] = file_path
                 chunk.metadata["file_name"] = Path(file_path).name
+                chunk.metadata["user_id"] = str(user_id)
 
             # 存储到向量库（add_documents 是同步方法，但可能耗时）
             await asyncio.to_thread(self.vector_store.add_documents, chunks)
@@ -124,41 +194,46 @@ class KnowledgeService:
             logger.error(f"向量化存储失败: {e}")
             return 0
 
-    async def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
-        """语义检索"""
+    async def search(self, query: str, k: int = 5, user_id: int = 0) -> List[Dict[str, Any]]:
+        """语义检索（可选按用户过滤）。"""
         self._initialize()
         try:
             import asyncio
-            # similarity_search_with_score 返回 (Document, score) 列表
+            # 多取一些结果再过滤，保证返回 k 条
+            fetch_k = k * 3 if user_id else k
             results = await asyncio.to_thread(
-                self.vector_store.similarity_search_with_score, query, k=k
+                self.vector_store.similarity_search_with_score, query, k=fetch_k
             )
             formatted = []
             for doc, score in results:
+                if user_id and doc.metadata.get("user_id") != str(user_id):
+                    continue
                 formatted.append({
                     "content": doc.page_content,
                     "metadata": doc.metadata,
                     "score": float(score)
                 })
+                if len(formatted) >= k:
+                    break
             logger.info(f"知识库检索完成: query={query[:50]}..., 结果数={len(formatted)}")
             return formatted
         except Exception as e:
             logger.error(f"知识库检索失败: {e}")
             return []
 
-    async def delete_by_source(self, source: str) -> bool:
-        """按来源删除文档（删除 metadata 中 source 匹配的所有块）"""
+    async def delete_by_source(self, source: str, user_id: int = 0) -> bool:
+        """按来源删除文档（仅允许删除自己上传的）。"""
         self._initialize()
         try:
-            # 使用 SQLAlchemy 直接操作表
             from sqlalchemy import create_engine, text
             engine = create_engine(settings.DATABASE_URL)
             with engine.connect() as conn:
                 sql = text(
                     "DELETE FROM langchain_pg_embedding "
-                    "WHERE cmetadata->>'source' = :source"
+                    "WHERE cmetadata->>'source' = :source "
+                    "AND cmetadata->>'user_id' = :user_id"
                 )
-                result = conn.execute(sql, {"source": source})
+                result = conn.execute(sql, {"source": source, "user_id": str(user_id)})
                 conn.commit()
                 deleted = result.rowcount
                 logger.info(f"删除文档 {source}，共删除 {deleted} 个块")
@@ -167,30 +242,37 @@ class KnowledgeService:
             logger.error(f"删除文档失败: {e}")
             return False
 
-    async def get_collection_stats(self) -> Dict[str, Any]:
-        """获取统计信息"""
+    async def get_collection_stats(self, user_id: int = 0) -> Dict[str, Any]:
+        """获取统计信息（可选按用户过滤）。"""
         self._initialize()
         try:
             from sqlalchemy import create_engine, text
             engine = create_engine(settings.DATABASE_URL)
             with engine.connect() as conn:
-                # 总块数
-                count_sql = text("SELECT COUNT(*) FROM langchain_pg_embedding")
-                total = conn.execute(count_sql).scalar() or 0
-
-                # 按来源分组统计
-                group_sql = text(
-                    "SELECT cmetadata->>'source' as source, COUNT(*) as count "
-                    "FROM langchain_pg_embedding "
-                    "GROUP BY cmetadata->>'source'"
-                )
-                rows = conn.execute(group_sql).fetchall()
+                if user_id:
+                    count_sql = text(
+                        "SELECT COUNT(*) FROM langchain_pg_embedding "
+                        "WHERE cmetadata->>'user_id' = :uid"
+                    )
+                    total = conn.execute(count_sql, {"uid": str(user_id)}).scalar() or 0
+                    group_sql = text(
+                        "SELECT cmetadata->>'source' as source, COUNT(*) as count "
+                        "FROM langchain_pg_embedding "
+                        "WHERE cmetadata->>'user_id' = :uid "
+                        "GROUP BY cmetadata->>'source'"
+                    )
+                    rows = conn.execute(group_sql, {"uid": str(user_id)}).fetchall()
+                else:
+                    count_sql = text("SELECT COUNT(*) FROM langchain_pg_embedding")
+                    total = conn.execute(count_sql).scalar() or 0
+                    group_sql = text(
+                        "SELECT cmetadata->>'source' as source, COUNT(*) as count "
+                        "FROM langchain_pg_embedding "
+                        "GROUP BY cmetadata->>'source'"
+                    )
+                    rows = conn.execute(group_sql).fetchall()
                 sources = [{"source": row[0], "count": row[1]} for row in rows]
-
-                return {
-                    "total_chunks": total,
-                    "sources": sources
-                }
+                return {"total_chunks": total, "sources": sources}
         except Exception as e:
             logger.error(f"获取统计信息失败: {e}")
             return {"total_chunks": 0, "sources": []}

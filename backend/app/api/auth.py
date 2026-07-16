@@ -5,8 +5,11 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.config.settings import settings
 from app.database.session import get_db
-from app.entity.schemas import UserLogin, UserRegister, UserResponse, TokenResponse
+from app.entity.schemas import UserLogin, UserRegister, UserResponse, TokenResponse, ChangePassword
 from app.services.user_service import user_service
+from app.core.logger import get_logger
+
+logger = get_logger("auth")
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -26,8 +29,12 @@ async def register(request: UserRegister, db: Session = Depends(get_db)):
             email=request.email,
             password=request.password,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"注册异常: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误")
     return user
 
 
@@ -44,12 +51,12 @@ async def login(request: UserLogin, db: Session = Depends(get_db)):
             username=request.username,
             password=request.password,
         )
-    except ValueError as e:
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"登录异常: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误")
 
     access_token = user_service.create_access_token_for_user(user)
     roles = user_service.get_user_roles(db, user)
@@ -63,7 +70,6 @@ async def login(request: UserLogin, db: Session = Depends(get_db)):
             "email": user.email,
             "phone": user.phone,
             "avatar": user.avatar,
-            "is_active": user.is_active,
             "is_superuser": user.is_superuser,
             "roles": roles,
             "last_login_at": user.last_login_at,
@@ -110,12 +116,25 @@ async def get_current_user_info(
 async def logout():
     """幂等登出：无论登录状态如何都清除 HttpOnly Cookie。"""
     response = JSONResponse(content={"message": "已登出"})
-    response.delete_cookie(
-        key=settings.AUTH_COOKIE_NAME,
-        path="/",
-        domain=settings.AUTH_COOKIE_DOMAIN,
-        secure=settings.AUTH_COOKIE_SECURE,
-        httponly=True,
-        samesite=settings.AUTH_COOKIE_SAMESITE,
-    )
+    response.delete_cookie(key="access_token", path="/")
     return response
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePassword,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """修改密码"""
+    try:
+        user_service.change_password(
+            db=db,
+            user_id=current_user.id,
+            old_password=request.old_password,
+            new_password=request.new_password,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    
+    return {"message": "密码修改成功"}

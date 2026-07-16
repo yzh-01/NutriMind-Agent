@@ -15,9 +15,7 @@ Agent 工具函数模块 — 为 LLM Agent 提供可调用的 Python 工具。
 import asyncio
 import json
 import logging
-from sqlalchemy.exc import SQLAlchemyError
-from app.config.settings import settings
-from app.database.session import SessionLocal
+from app.database.session import get_session_local
 from app.entity.db_models import DetectionTask, FoodNutrition, User
 from app.services.image_store import image_store
 
@@ -163,7 +161,7 @@ async def query_food_calories(food_name: str) -> str:
         格式化的营养信息文本，如果未找到则返回提示信息。
     """
     def _query_sync(food_name: str) -> str:
-        db = SessionLocal()
+        db = get_session_local()()
         try:
             # 模糊查询：先精确匹配，再模糊匹配
             food = (
@@ -231,7 +229,7 @@ async def query_food_by_category(category: str) -> str:
         格式化的食物列表文本
     """
     def _query_sync(category: str) -> str:
-        db = SessionLocal()
+        db = get_session_local()()
         try:
             foods = (
                 db.query(FoodNutrition)
@@ -289,8 +287,7 @@ async def calculate_total_nutrition(food_items_json: str) -> str:
         if not items:
             return "食物清单为空，无法计算。"
 
-        db = SessionLocal()
-        database_available = True
+        db = get_session_local()()
         try:
             total_calories = 0.0
             total_protein = 0.0
@@ -364,9 +361,11 @@ async def calculate_total_nutrition(food_items_json: str) -> str:
             if total_macro > 0:
                 lines.append("")
                 lines.append("## 宏量营养素供能比")
-                lines.append(f"- 蛋白质: {total_protein * 4 / total_macro * 100:.0f}%")
+                lines.append(
+                    f"- 蛋白质: {total_protein * 4 / total_macro * 100:.0f}%")
                 lines.append(f"- 脂肪: {total_fat * 9 / total_macro * 100:.0f}%")
-                lines.append(f"- 碳水化合物: {total_carbs * 4 / total_macro * 100:.0f}%")
+                lines.append(
+                    f"- 碳水化合物: {total_carbs * 4 / total_macro * 100:.0f}%")
 
             if not_found:
                 lines.append("")
@@ -393,7 +392,7 @@ async def get_user_profile(user_id: int) -> str:
         格式化的用户档案文本
     """
     def _get_sync(user_id: int) -> str:
-        db = SessionLocal()
+        db = get_session_local()()
         try:
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
@@ -439,15 +438,17 @@ async def save_detection_record(
 
         import uuid
 
-        db = SessionLocal()
+        db = get_session_local()()
         try:
             task = DetectionTask(
                 user_id=user_id,
                 scene_id=scene_id,
                 task_uuid=str(uuid.uuid4()),
                 status="completed",
-                detections=detections_data if isinstance(detections_data, list) else [detections_data],
-                total_objects=len(detections_data) if isinstance(detections_data, list) else 1,
+                detections=detections_data if isinstance(
+                    detections_data, list) else [detections_data],
+                total_objects=len(detections_data) if isinstance(
+                    detections_data, list) else 1,
             )
             db.add(task)
             db.commit()
