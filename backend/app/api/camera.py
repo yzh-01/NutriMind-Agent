@@ -51,7 +51,7 @@ async def list_images(
     current_user: User = Depends(get_current_user),
 ):
     """获取拍照历史列表（分页，按时间倒序）。"""
-    result = camera_service.list_images(page=page, page_size=page_size)
+    result = camera_service.list_images(current_user.id, page=page, page_size=page_size)
     return ApiResponse(code=200, data=result)
 
 
@@ -61,9 +61,9 @@ async def view_image(
     current_user: User = Depends(get_current_user),
 ):
     """查看/下载指定图片。"""
-    path = camera_service.get_image_path(image_id)
+    path = camera_service.get_image_path(image_id, current_user.id)
     if path is None:
-        raise HTTPException(status_code=404, detail="图片不存在")
+        raise HTTPException(status_code=404, detail="图片不存在或无权访问")
     return FileResponse(path, media_type="image/png")
 
 
@@ -73,7 +73,7 @@ async def delete_image(
     current_user: User = Depends(get_current_user),
 ):
     """删除指定图片。"""
-    ok = camera_service.delete_image(image_id)
+    ok = camera_service.delete_image(image_id, current_user.id)
     if not ok:
-        raise HTTPException(status_code=404, detail="图片不存在")
+        raise HTTPException(status_code=404, detail="图片不存在或无权删除")
     return ApiResponse(code=200, message="图片已删除")

@@ -574,8 +574,6 @@ curl -X POST http://localhost:9999/api/camera/capture \
   "data": {
     "id": "a2e9367c537446409cdb474b01873a92.png",
     "original_name": "photo.png",
-    "filename": "a2e9367c537446409cdb474b01873a92.png",
-    "path": "D:\\...\\data\\captures\\a2e9367c...png",
     "size": 69,
     "user_id": 19,
     "created_at": "2026-07-15T14:59:53"
@@ -632,12 +630,34 @@ DELETE /api/camera/{image_id}
 
 ---
 
-### 待实现模块
+### 当前部署状态
 
-以下模块代码已就绪，API 路由尚未注册：
-
-| 模块 | 文件 | 状态 |
+| 模块 | 端点 | 状态 |
 |------|------|:--:|
-| 目标检测 | `detection.py` / `detection_service.py` | ⏳ 待接线 |
-| 模型训练 | `training.py` / `training_service.py` | ⏳ 待接线 |
-| 智能对话 | `chat.py` / `agent_graph.py` | ⏳ 待接线 |
+| 健康检查 | `GET /api/health` | ✅ 已部署 |
+| 认证 | 注册/登录/个人信息/修改密码/登出 | ✅ 已部署 |
+| 知识库 | 上传/检索/删除/统计 | ✅ 已部署 |
+| 摄像头 | 拍照/列表/查看/删除 | ✅ 已部署（按用户隔离） |
+| 数据看板 | 总览/检测/训练/用户/状态分布 | ✅ 已部署 |
+| 目标检测 | — | ⏳ Service 已就绪，API 未接线 |
+| 模型训练 | — | ⏳ Service 已就绪，API 未接线 |
+| 智能对话 | — | ⏳ Service 已就绪，API 未接线 |
+
+### 认证策略
+
+| 项目 | 当前实现 |
+|------|------|
+| 浏览器认证 | **Header + Cookie 双通道** 均可 |
+| Refresh Token | ❌ 配置存在但无接口 |
+| 管理员判断 | `is_superuser` 字段 + `roles` 包含 `admin` |
+| 登出 | 幂等，无需认证，清除 Cookie |
+
+### 安全与隔离
+
+| 项目 | 状态 |
+|------|:--:|
+| Camera 用户隔离 | ✅ 文件名内置 user_id，列表/查看/删除均校验 |
+| Camera 路径暴露 | ✅ 不返回服务器绝对路径 |
+| 知识库用户隔离 | ❌ 当前为全局共享 |
+| Dashboard 权限 | ❌ 当前仅需登录，未限制管理员 |
+| DEBUG 模式 | ⚠️ 默认 `true`，生产应设为 `false` |
