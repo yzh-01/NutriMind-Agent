@@ -20,7 +20,7 @@ from pathlib import Path
 from sqlalchemy.exc import SQLAlchemyError
 from app.config.settings import settings
 from app.database.session import get_session_local
-from app.entity.db_models import DetectionTask, FoodNutrition, User
+from app.entity.db_models import DetectionScene, DetectionTask, FoodNutrition, User
 from app.services.image_store import image_store
 
 logger = logging.getLogger(__name__)
@@ -151,32 +151,41 @@ async def detect_food(image_id: str, conf_threshold: float = 0.1) -> str:
 
         # ---- 自动保存检测记录到数据库 ----
         task_uuid_str = None
+        import uuid as _uuid
+        db = SessionLocal()
         try:
-            import uuid as _uuid
-            db = SessionLocal()
-            try:
-                task_uuid_str = str(_uuid.uuid4())
-                task = DetectionTask(
-                    user_id=None,  # Agent 工具无用户上下文，由上层 API 补充
-                    scene_id=1,     # 默认食物检测场景
-                    task_uuid=task_uuid_str,
-                    image_path=str(image_path),
-                    status="completed",
-                    detections=detections,
-                    total_objects=len(detections),
-                    inference_time=None,
-                    conf_threshold=conf_threshold,
-                    iou_threshold=0.45,
+            scene = (
+                db.query(DetectionScene)
+                .filter(
+                    DetectionScene.name == "food_detection",
+                    DetectionScene.is_active == True,
                 )
-                db.add(task)
-                db.commit()
-            except Exception:
-                db.rollback()
-                task_uuid_str = None
-            finally:
-                db.close()
+                .first()
+            )
+            if scene is None:
+                raise RuntimeError("默认食物检测场景不存在或未启用")
+
+            task_uuid_str = str(_uuid.uuid4())
+            task = DetectionTask(
+                user_id=None,  # Agent 工具当前没有用户上下文
+                scene_id=scene.id,
+                task_uuid=task_uuid_str,
+                image_path=str(image_path),
+                status="completed",
+                detections=detections,
+                total_objects=len(detections),
+                inference_time=None,
+                conf_threshold=conf_threshold,
+                iou_threshold=0.45,
+            )
+            db.add(task)
+            db.commit()
         except Exception as exc:
+            db.rollback()
+            task_uuid_str = None
             logger.warning("保存检测记录失败（数据库可能未就绪）: %s", exc)
+        finally:
+            db.close()
 
         return json.dumps(
             {

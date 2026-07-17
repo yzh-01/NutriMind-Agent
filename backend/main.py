@@ -13,6 +13,7 @@ from app.config.settings import settings
 from app.api.knowledge import router as knowledge_router
 from app.core.logger import setup_logger, get_logger
 from app.middleware.request_logger import RequestLoggerMiddleware
+from app.database.seed import init_db, init_seed
 
 # 初始化日志
 setup_logger()
@@ -24,7 +25,6 @@ logger = get_logger("main")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """启动时执行初始化"""
-    from app.database.seed import init_db, init_seed
     init_db()
     init_seed()
     yield

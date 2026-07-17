@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     MAX_IMAGE_SIZE_MB: int = 10
     DETECTION_MODE: str = "yolo"
     DEFAULT_DETECTION_MODEL: str = "yolo11_food_best.pt"
-    VISION_MODEL: str = "Qwen/Qwen2.5-VL-32B-Instruct"
+    VISION_MODEL: str = "Qwen/Qwen3-VL-8B-Instruct"
 
     @computed_field
     @property

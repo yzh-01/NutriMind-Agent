@@ -21,6 +21,10 @@ from app.entity.db_models import DetectionScene, DetectionTask
 from app.entity.schemas import BoundingBox, DetectionResponse
 
 
+class DetectionSceneNotFoundError(ValueError):
+    """Raised when a requested detection scene does not exist or is disabled."""
+
+
 class DetectionService:
     """YOLOv11 检测服务 — 管理模型加载与图片推理。"""
 
@@ -102,11 +106,14 @@ class DetectionService:
             DetectionScene.is_active == True,
         ).first()
 
-        if scene and scene.model_path:
+        if scene is None:
+            raise DetectionSceneNotFoundError(f"检测场景 {scene_id} 不存在或未启用")
+
+        if scene.model_path:
             model_path = Path(scene.model_path)
         else:
             # 回退到全局默认模型路径
-            model_path = settings.MODELS_DIR / "yolo11_food_best.pt"
+            model_path = settings.MODELS_DIR / settings.DEFAULT_DETECTION_MODEL
 
         # 确保路径为绝对路径
         if not model_path.is_absolute():
@@ -214,7 +221,15 @@ class DetectionService:
         task_uuid_str = str(uuid.uuid4())
         start_time = time.perf_counter()
 
-        # 1. 创建任务记录（pending 状态）
+        # 1. 在创建任务前校验外键，避免无效 scene_id 触发数据库 500。
+        scene = db.query(DetectionScene).filter(
+            DetectionScene.id == scene_id,
+            DetectionScene.is_active == True,
+        ).first()
+        if scene is None:
+            raise DetectionSceneNotFoundError(f"检测场景 {scene_id} 不存在或未启用")
+
+        # 2. 创建任务记录（processing 状态）
         task = DetectionTask(
             user_id=user_id,
             scene_id=scene_id,
@@ -229,14 +244,14 @@ class DetectionService:
         db.refresh(task)
 
         try:
-            # 2. 解析并验证模型路径
+            # 3. 解析并验证模型路径
             model_path = await self._resolve_model_path(db, scene_id)
             await self._validate_model_exists(model_path)
 
-            # 3. 加载模型（命中缓存则即时返回）
+            # 4. 加载模型（命中缓存则即时返回）
             model = await self._get_or_load_model(model_path)
 
-            # 4. 执行推理 —— 关键！YOLO.predict 是同步阻塞的 CPU/GPU 操作，
+            # 5. 执行推理 —— 关键！YOLO.predict 是同步阻塞的 CPU/GPU 操作，
             #    必须通过 asyncio.to_thread 放入线程池，防止阻塞 FastAPI 事件循环
             results = await asyncio.to_thread(
                 model.predict,
@@ -246,13 +261,13 @@ class DetectionService:
                 verbose=False,
             )
 
-            # 5. 解析结果
+            # 6. 解析结果
             detections, total_objects = self._parse_yolo_results(
                 results, db, scene_id
             )
             inference_time = round(time.perf_counter() - start_time, 4)
 
-            # 6. 更新任务记录为 completed
+            # 7. 更新任务记录为 completed
             task.status = "completed"
             task.detections = [d.model_dump() for d in detections]
             task.total_objects = total_objects
