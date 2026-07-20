@@ -276,7 +276,8 @@ class TrainingService:
                 ),
             }
 
-            # 读取 per-epoch 指标（results.csv）用于前端折线图
+            # 从训练输出目录读取 per-epoch 指标（results.csv）用于前端折线图
+            save_dir = getattr(train_results, "save_dir", None)
             per_epoch = []
             if save_dir:
                 csv_path = Path(save_dir) / "results.csv"
@@ -308,7 +309,6 @@ class TrainingService:
             # 从训练输出目录复制 best.pt
             import shutil
 
-            save_dir = getattr(train_results, "save_dir", None)
             if save_dir:
                 src_best = Path(save_dir) / "weights" / "best.pt"
                 if src_best.exists():
