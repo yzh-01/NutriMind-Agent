@@ -327,6 +327,18 @@ class TestGraphEntityExtraction:
             assert stored_again == 0
             assert db.query(FoodNutrition).count() == 2
 
+            # 对话再次提到已有食物时，应更新变化的营养数值而不是静默忽略
+            updated = service._store_food_entities(
+                [{"name_en": "apple", "name_cn": "苹果", "category": "水果",
+                  "calories": 53, "protein": 0.4}],
+                "对话抽取",
+            )
+            assert updated == 1
+            apple = db.query(FoodNutrition).filter_by(food_name_cn="苹果").first()
+            assert apple.calories_per_100g == 53
+            assert apple.protein_per_100g == 0.4
+            assert apple.source == "对话抽取"
+
             # 回填分类：先造一条无分类记录，再用带分类数据补齐
             db.add(FoodNutrition(
                 food_name="oats", food_name_cn="燕麦",

@@ -622,7 +622,8 @@ async function sendMessage() {
         case 'session':
           if (event.session_id) {
             sessionId.value = event.session_id
-            if (!imageFile) { activeSessionId.value = event.session_id; sessionPersisted.value = true }
+            activeSessionId.value = event.session_id
+            sessionPersisted.value = true
           }
           break
         case 'reset':
@@ -675,7 +676,8 @@ async function sendMessage() {
       if (generation !== requestGeneration) return
       const result = normalizeChatResponse(payload, sessionId.value)
       sessionId.value = result.sessionId || sessionId.value
-      if (!imageFile) { activeSessionId.value = sessionId.value; sessionPersisted.value = true }
+      activeSessionId.value = sessionId.value
+      sessionPersisted.value = true
       messages.value[responseIndex] = {
         role: 'assistant',
         content: result.response,
@@ -686,7 +688,7 @@ async function sendMessage() {
       scrollToEnd()
     }
     if (generation !== requestGeneration) return
-    if (!imageFile && !streamErrored) loadSessions(true)
+    await loadSessions(true)
   } catch (error) {
     if (generation !== requestGeneration) return
     const errorMessage = requestErrorMessage(error, Boolean(imageFile))

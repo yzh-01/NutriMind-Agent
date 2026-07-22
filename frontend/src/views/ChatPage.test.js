@@ -106,4 +106,27 @@ describe('ChatPage generation controls', () => {
     expect(wrapper.find('.send-button').exists()).toBe(true)
     wrapper.unmount()
   })
+
+  it('refreshes history after a streaming reply is persisted', async () => {
+    chatMocks.streamChatMessageApi.mockImplementation(async (_payload, { onEvent } = {}) => {
+      onEvent({ type: 'session', session_id: 'meal-stream-1' })
+      onEvent({ type: 'token', text: '先补充蛋白质。' })
+      onEvent({
+        type: 'done', session_id: 'meal-stream-1', response: '先补充蛋白质。',
+        tool_calls: [], detections: [],
+      })
+    })
+
+    const wrapper = mount(ChatPage)
+    await flushPromises()
+    expect(chatMocks.getChatSessionsApi).toHaveBeenCalledTimes(1)
+
+    await wrapper.find('textarea').setValue('训练后吃什么？')
+    await wrapper.find('.send-button').trigger('click')
+    await flushPromises()
+
+    expect(chatMocks.getChatSessionsApi).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('先补充蛋白质')
+    wrapper.unmount()
+  })
 })

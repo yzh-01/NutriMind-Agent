@@ -379,28 +379,45 @@ class KnowledgeService:
                     .first()
                 )
                 category = str(item.get("category") or "").strip() or None
-                protein = _num(item.get("protein")) or 0.0
-                fat = _num(item.get("fat")) or 0.0
-                carbs = _num(item.get("carbs")) or 0.0
-                fiber = _num(item.get("fiber")) or 0.0
+                protein = _num(item.get("protein"))
+                fat = _num(item.get("fat"))
+                carbs = _num(item.get("carbs"))
+                fiber = _num(item.get("fiber"))
 
                 if existing is None:
                     db.add(FoodNutrition(
                         food_name=name_en or name_cn,
                         food_name_cn=name_cn,
                         calories_per_100g=calories,
-                        protein_per_100g=protein,
-                        fat_per_100g=fat,
-                        carbs_per_100g=carbs,
-                        fiber_per_100g=fiber,
+                        protein_per_100g=protein or 0.0,
+                        fat_per_100g=fat or 0.0,
+                        carbs_per_100g=carbs or 0.0,
+                        fiber_per_100g=fiber or 0.0,
                         category=category,
                         source=source or "知识库抽取",
                     ))
                     stored += 1
                 else:
-                    # 只补齐缺失的分类，避免覆盖已有的可信数据
-                    if category and not existing.category:
+                    changed = False
+                    updates = {
+                        "calories_per_100g": calories,
+                        "protein_per_100g": protein,
+                        "fat_per_100g": fat,
+                        "carbs_per_100g": carbs,
+                        "fiber_per_100g": fiber,
+                    }
+                    for field, value in updates.items():
+                        if value is not None and getattr(existing, field) != value:
+                            setattr(existing, field, value)
+                            changed = True
+                    if category and existing.category != category:
                         existing.category = category
+                        changed = True
+                    if name_en and existing.food_name != name_en:
+                        existing.food_name = name_en
+                        changed = True
+                    if changed:
+                        existing.source = source or existing.source or "知识库抽取"
                         stored += 1
             db.commit()
             logger.info("图谱食物入库完成：新增/更新 %d 条（来源=%s）", stored, source)

@@ -3,12 +3,14 @@ import json
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from fastapi.testclient import TestClient
 
 from app.core.security import get_current_user
-from app.entity.db_models import BodyProfile, GoalProfile, User
+from app.entity.db_models import BodyProfile, ChatMessage, GoalProfile, User
+from app.entity.schemas import ChatRequest
 from main import app
 from app.config.settings import settings
 from app.services.agent_tools import calculate_total_nutrition, detect_food, query_food_calories
@@ -30,7 +32,8 @@ def test_chat_message_passes_detection_context():
         "analysis_result": None,
     }
     try:
-        with patch("app.api.chat.run_agent", new=AsyncMock(return_value=agent_result)) as mocked:
+        with patch("app.api.chat.run_agent", new=AsyncMock(return_value=agent_result)) as mocked, \
+                patch("app.api.chat._schedule_graph_extraction"):
             response = TestClient(app).post(
                 "/api/chat/message",
                 json={
@@ -73,7 +76,7 @@ def test_chat_injects_saved_nutrition_profile(db):
         with patch(
             "app.api.chat.run_agent",
             new=AsyncMock(return_value={"response": "已结合目标", "tool_calls": [], "analysis_result": None}),
-        ) as mocked:
+        ) as mocked, patch("app.api.chat._schedule_graph_extraction"):
             response = TestClient(app).post("/api/chat/message", json={"message": "晚饭怎么吃？"})
     finally:
         app.dependency_overrides.clear()
@@ -146,7 +149,7 @@ def test_chat_generates_session_id():
         with patch(
             "app.api.chat.run_agent",
             new=AsyncMock(return_value={"response": "你好", "tool_calls": [], "analysis_result": None}),
-        ):
+        ), patch("app.api.chat._schedule_graph_extraction"):
             response = TestClient(app).post(
                 "/api/chat/message",
                 json={"message": "你好"},
@@ -164,7 +167,8 @@ def test_mock_yolo_endpoint_passes_detections_without_auth():
         "tool_calls": [{"name": "calculate_total_nutrition", "args": {}}],
         "analysis_result": None,
     }
-    with patch("app.api.chat.run_agent", new=AsyncMock(return_value=agent_result)) as mocked:
+    with patch("app.api.chat.run_agent", new=AsyncMock(return_value=agent_result)) as mocked, \
+            patch("app.api.chat._schedule_graph_extraction"):
         response = TestClient(app).post(
             "/api/chat/mock-yolo",
             json={
@@ -501,9 +505,107 @@ def _parse_sse(body: str) -> list[dict]:
     return events
 
 
-def test_message_stream_endpoint_emits_sse_events():
-    app.dependency_overrides[get_current_user] = _mock_user
+def test_stream_persists_reply_and_graph_before_done(db):
+    """done 到达前，用户/助手消息和图谱抽取都应已经完成。"""
+    import app.api.chat as chat_api
 
+    user = User(
+        id=703, username="stream-persist-user", email="stream-persist@example.com",
+        hashed_password="hash", is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    session_factory = sessionmaker(bind=db.get_bind())
+
+    async def _fake_stream(*_args, **_kwargs):
+        yield {"type": "token", "text": "鸡胸肉富含蛋白质。"}
+        yield {
+            "type": "done",
+            "response": "鸡胸肉富含蛋白质。",
+            "tool_calls": [],
+            "detections": [],
+            "detection_mode": None,
+        }
+
+    async def _fake_extract(_question, _response):
+        check_db = session_factory()
+        try:
+            roles = [
+                item.role for item in check_db.query(ChatMessage)
+                .order_by(ChatMessage.id)
+                .all()
+            ]
+            assert roles == ["user", "assistant"]
+        finally:
+            check_db.close()
+        return 1
+
+    async def _collect():
+        return [frame async for frame in chat_api._stream_chat_events(
+            session_id="stream-persist-001",
+            message="鸡胸肉有什么营养？",
+            thread_prefix="user:703",
+            user_id=user.id,
+        )]
+
+    with patch.object(chat_api, "get_session_local", return_value=session_factory), \
+            patch.object(chat_api, "stream_agent", new=_fake_stream), \
+            patch.object(chat_api, "_extract_conversation_graph", new=_fake_extract):
+        events = _parse_sse("".join(asyncio.run(_collect())))
+
+    db.expire_all()
+    messages = db.query(ChatMessage).order_by(ChatMessage.id).all()
+    assert [(item.role, item.content) for item in messages] == [
+        ("user", "鸡胸肉有什么营养？"),
+        ("assistant", "鸡胸肉富含蛋白质。"),
+    ]
+    done = next(event for event in events if event["type"] == "done")
+    assert done["graph_foods_count"] == 1
+
+
+def test_stream_error_still_persists_assistant_record(db):
+    """Agent 返回 error 时，历史记录不能只剩一条用户消息。"""
+    import app.api.chat as chat_api
+
+    user = User(
+        id=704, username="stream-error-user", email="stream-error@example.com",
+        hashed_password="hash", is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    session_factory = sessionmaker(bind=db.get_bind())
+
+    async def _fake_stream(*_args, **_kwargs):
+        yield {"type": "error", "message": "模型暂时不可用"}
+
+    async def _collect():
+        return [frame async for frame in chat_api._stream_chat_events(
+            session_id="stream-error-001",
+            message="帮我分析晚餐",
+            thread_prefix="user:704",
+            user_id=user.id,
+        )]
+
+    with patch.object(chat_api, "get_session_local", return_value=session_factory), \
+            patch.object(chat_api, "stream_agent", new=_fake_stream):
+        asyncio.run(_collect())
+
+    db.expire_all()
+    messages = db.query(ChatMessage).order_by(ChatMessage.id).all()
+    assert [item.role for item in messages] == ["user", "assistant"]
+    assert "模型暂时不可用" in messages[1].content
+
+
+def test_message_stream_endpoint_emits_sse_events(db):
+    import app.api.chat as chat_api
+
+    user = db.get(User, 7)
+    if user is None:
+        user = _mock_user()
+        user.hashed_password = "hash"
+        db.add(user)
+        db.commit()
+    session_factory = sessionmaker(bind=db.get_bind())
     async def _fake_stream(*_args, **_kwargs):
         yield {"type": "token", "text": "你好"}
         yield {"type": "tool", "name": "query_food_calories"}
@@ -513,17 +615,22 @@ def test_message_stream_endpoint_emits_sse_events():
                "tool_calls": [{"name": "query_food_calories", "args": {}}],
                "detections": [], "detection_mode": None}
 
-    try:
-        with patch("app.api.chat.stream_agent", new=_fake_stream):
-            with TestClient(app).stream(
-                "POST", "/api/chat/message/stream",
-                json={"session_id": "meal-1", "message": "分析一下"},
-            ) as response:
-                assert response.status_code == 200
-                assert response.headers["content-type"].startswith("text/event-stream")
-                body = "".join(response.iter_text())
-    finally:
-        app.dependency_overrides.clear()
+    async def _request_body():
+        response = await chat_api.send_message_stream(
+            ChatRequest(session_id="meal-1", message="分析一下"),
+            current_user=user,
+        )
+        parts = []
+        async for chunk in response.body_iterator:
+            parts.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
+        return "".join(parts)
+
+    with patch("app.api.chat.get_session_local", return_value=session_factory), patch(
+        "app.api.chat.stream_agent", new=_fake_stream,
+    ), patch(
+        "app.api.chat._extract_conversation_graph", new=AsyncMock(return_value=0),
+    ):
+        body = asyncio.run(_request_body())
 
     events = _parse_sse(body)
     types = [event["type"] for event in events]

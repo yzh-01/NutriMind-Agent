@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from app.core.security import get_current_user
 from app.config.settings import settings
 from app.entity.db_models import BodyProfile, GoalProfile, User
-from app.database.session import get_db
+from app.database.session import get_db, get_session_local
 from app.entity.schemas import (
     BoundingBox, ChatRequest, ChatResponse, ChatSessionCreate,
     ChatSessionResponse, ImageChatResponse,
@@ -30,22 +30,27 @@ from typing import AsyncIterator
 _graph_tasks: set[asyncio.Task] = set()
 
 
-def _schedule_graph_extraction(user_message: str, response_text: str) -> None:
-    """对话结束后，后台从「用户消息 + 教练回复」抽取食物实体写入图谱。
-
-    fire-and-forget：不阻塞回复、不影响 SSE 流；失败只记日志。
-    """
+async def _extract_conversation_graph(user_message: str, response_text: str) -> int:
+    """从一轮完整对话抽取食物实体，并等待数据库提交完成。"""
     combined = f"{user_message}\n\n{response_text}".strip()
     if not combined:
+        return 0
+    try:
+        count = await knowledge_service.extract_and_store_graph(combined, source="对话抽取")
+        logger.info("对话图谱抽取完成：新增/更新 %d 种食物", count)
+        return count
+    except Exception as exc:
+        logger.warning("对话图谱抽取失败: %s", exc)
+        return 0
+
+
+def _schedule_graph_extraction(user_message: str, response_text: str) -> None:
+    """为非流式接口调度图谱抽取，并持有任务引用直到完成。"""
+    if not f"{user_message}{response_text}".strip():
         return
 
     async def _run():
-        try:
-            count = await knowledge_service.extract_and_store_graph(combined, source="对话抽取")
-            if count:
-                logger.info("对话图谱抽取：新增/更新 %d 种食物", count)
-        except Exception as exc:  # 后台任务绝不能影响主流程
-            logger.warning("对话图谱抽取失败，忽略: %s", exc)
+        await _extract_conversation_graph(user_message, response_text)
 
     task = asyncio.create_task(_run())
     _graph_tasks.add(task)
@@ -158,19 +163,23 @@ async def _stream_chat_events(
     message: str,
     thread_prefix: str,
     user_id: int | None,
-    db: Session | None,
     detections: list[dict] | None = None,
     image_id: str | None = None,
     extra_done: dict | None = None,
 ) -> AsyncIterator[str]:
-    """驱动 stream_agent，逐条产出 SSE；结束时把最终回复持久化。"""
+    """驱动 stream_agent，并在完成事件发给前端前可靠持久化。"""
+    db = get_session_local()() if user_id is not None else None
     persisted_session = None
     history = None
+    assistant_saved = False
+    streamed_text = ""
     if db is not None and user_id is not None:
         try:
             persisted_session = chat_service.get_or_create_session(db, user_id, session_id, message)
             history = chat_service.history_as_langchain(persisted_session)
-            chat_service.append_message(db, persisted_session, "user", message)
+            chat_service.append_message(
+                db, persisted_session, "user", message, image_id=image_id,
+            )
         except Exception as exc:
             db.rollback()
             persisted_session = None
@@ -180,7 +189,6 @@ async def _stream_chat_events(
     # 先把 session_id 告知前端，便于新会话立即绑定
     yield _sse({"type": "session", "session_id": session_id})
 
-    final_event: dict | None = None
     try:
         async for event in stream_agent(
             session_id=f"{thread_prefix}:{session_id}",
@@ -191,37 +199,90 @@ async def _stream_chat_events(
             history=history,
             user_profile=_agent_profile(db, user_id),
         ):
-            if event.get("type") == "done":
-                final_event = event
+            event_type = event.get("type")
+            if event_type == "token":
+                streamed_text += str(event.get("text") or "")
+            elif event_type == "reset":
+                streamed_text = ""
+            elif event_type == "done":
                 if extra_done:
                     event = {**event, **extra_done}
+                response_text = str(event.get("response") or streamed_text)
+
+                # 先通知前端进入同步阶段，避免图谱抽取期间被空闲超时误杀。
+                yield _sse({"type": "sync", "stage": "persisting"})
+
+                if persisted_session is not None:
+                    try:
+                        chat_service.append_message(
+                            db,
+                            persisted_session,
+                            "assistant",
+                            response_text,
+                            event.get("tool_calls", []),
+                        )
+                        assistant_saved = True
+                    except Exception as exc:
+                        db.rollback()
+                        logger.warning("保存流式智能体回复失败: %s", exc)
+
+                graph_task = asyncio.create_task(
+                    _extract_conversation_graph(message, response_text)
+                )
+                _graph_tasks.add(graph_task)
+                graph_task.add_done_callback(_graph_tasks.discard)
+                while not graph_task.done():
+                    done, _ = await asyncio.wait({graph_task}, timeout=15)
+                    if not done:
+                        yield _sse({"type": "sync", "stage": "updating_graph"})
+                graph_foods_count = graph_task.result()
+                event = {**event, "graph_foods_count": graph_foods_count}
+            elif event_type == "error":
+                error_text = str(event.get("message") or "智能体处理失败，请稍后重试。")
+                if persisted_session is not None:
+                    try:
+                        chat_service.append_message(
+                            db, persisted_session, "assistant", f"回复生成失败：{error_text}",
+                        )
+                        assistant_saved = True
+                    except Exception as exc:
+                        db.rollback()
+                        logger.warning("保存流式错误记录失败: %s", exc)
             yield _sse(event)
     except Exception:
         logger.exception("流式对话失败")
-        yield _sse({"type": "error", "message": "抱歉，营养分析暂时不可用，请稍后重试。"})
-        return
-
-    # 流正常结束：持久化助手回复
-    if persisted_session is not None and final_event is not None:
-        try:
-            chat_service.append_message(
-                db, persisted_session, "assistant",
-                final_event.get("response", ""), final_event.get("tool_calls", []),
-            )
-        except Exception as exc:
-            db.rollback()
-            logger.warning("保存智能体回复失败: %s", exc)
-
-    # 对话结束后后台抽取食物实体进图谱
-    if final_event is not None:
-        _schedule_graph_extraction(message, final_event.get("response", ""))
+        error_text = "抱歉，营养分析暂时不可用，请稍后重试。"
+        if persisted_session is not None and not assistant_saved:
+            try:
+                chat_service.append_message(
+                    db, persisted_session, "assistant", f"回复生成失败：{error_text}",
+                )
+                assistant_saved = True
+            except Exception as exc:
+                db.rollback()
+                logger.warning("保存流式异常记录失败: %s", exc)
+        yield _sse({"type": "error", "message": error_text})
+    finally:
+        # 浏览器取消或网络断开时也给用户消息补上一条可恢复的助手记录。
+        if persisted_session is not None and not assistant_saved:
+            interrupted_text = streamed_text.strip()
+            if interrupted_text:
+                interrupted_text += "\n\n[流式连接中断，以上为已生成内容]"
+            else:
+                interrupted_text = "本次回复因流式连接中断，未能完整生成。"
+            try:
+                chat_service.append_message(db, persisted_session, "assistant", interrupted_text)
+            except Exception as exc:
+                db.rollback()
+                logger.warning("保存流式中断记录失败: %s", exc)
+        if db is not None:
+            db.close()
 
 
 @router.post("/message/stream")
 async def send_message_stream(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """流式发送消息（SSE）：智能体一边生成、前端一边显示，避免长请求超时。"""
     message = _validate_request(request)
@@ -231,7 +292,6 @@ async def send_message_stream(
         message=message,
         thread_prefix=f"user:{current_user.id}",
         user_id=current_user.id,
-        db=db,
         detections=[item.model_dump() for item in request.detections] or None,
     )
     return StreamingResponse(generator, media_type="text/event-stream", headers=SSE_HEADERS)
@@ -426,7 +486,6 @@ async def analyze_image_stream(
     message: str = Form(..., max_length=4000),
     session_id: str | None = Form(default=None),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """流式图片对话（SSE）：Agent 调用真实 YOLO 工具，逐步回传分析结果。"""
     if not message.strip():
@@ -443,7 +502,6 @@ async def analyze_image_stream(
         message=message.strip(),
         thread_prefix=f"user:{current_user.id}:image",
         user_id=current_user.id,
-        db=db,
         image_id=image_id,
         extra_done={"image_id": image_id},
     )
