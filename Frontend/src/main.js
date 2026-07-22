@@ -1,0 +1,15 @@
+import { createApp } from 'vue'
+import '@fontsource/barlow/400.css'
+import '@fontsource/barlow/500.css'
+import '@fontsource/barlow/600.css'
+import '@fontsource/barlow-condensed/500.css'
+import '@fontsource/barlow-condensed/600.css'
+import '@fontsource/barlow-condensed/700.css'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+import '@/assets/styles/global.scss'
+import App from './App.vue'
+import router from './router'
+import pinia from './stores'
+
+createApp(App).use(pinia).use(router).mount('#app')
