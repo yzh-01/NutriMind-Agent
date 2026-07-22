@@ -139,10 +139,6 @@ async def get_knowledge_stats(
     except Exception as e:
         logger.error(f"获取知识库统计失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
-<<<<<<< Updated upstream
-=======
-
-
 @router.get("/graph", response_model=ApiResponse)
 async def get_knowledge_graph(
     current_user: User = Depends(get_current_user),
@@ -156,4 +152,3 @@ async def get_knowledge_graph(
     except Exception as e:
         logger.error(f"获取知识图谱失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取图谱失败: {str(e)}")
->>>>>>> Stashed changes
