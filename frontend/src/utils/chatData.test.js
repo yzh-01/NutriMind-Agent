@@ -43,13 +43,16 @@ describe('persistent chat session adapters', () => {
       session_id: 'meal-1', title: '训练晚餐', created_at: '2026-07-20T10:00:00',
       updated_at: '2026-07-20T10:05:00',
       messages: [
-        { id: 1, role: 'user', content: '怎么吃？', tool_calls: [], created_at: '2026-07-20T10:01:00' },
+        { id: 1, role: 'user', content: '怎么吃？', image_id: 'safe-image', image_url: '/api/chat/images/safe-image', tool_calls: [], created_at: '2026-07-20T10:01:00' },
         { id: 2, role: 'assistant', content: '优先蛋白质', tool_calls: [{ name: 'search_nutrition_knowledge', args: {} }] },
       ],
     })
 
     expect(result).toMatchObject({ sessionId: 'meal-1', title: '训练晚餐' })
-    expect(result.messages[0]).toMatchObject({ id: 1, role: 'user', content: '怎么吃？' })
+    expect(result.messages[0]).toMatchObject({
+      id: 1, role: 'user', content: '怎么吃？',
+      imageId: 'safe-image', imageUrl: '/api/chat/images/safe-image',
+    })
     expect(result.messages[1].toolCalls[0].name).toBe('search_nutrition_knowledge')
   })
 

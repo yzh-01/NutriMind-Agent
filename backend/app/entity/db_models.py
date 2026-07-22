@@ -52,6 +52,8 @@ class ChatMessage(Base):
     session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
+    # 图片文件仍由 ImageStore 管理；数据库保存安全引用，用于恢复历史消息。
+    image_id = Column(String(64), nullable=True, index=True)
     tool_calls = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 

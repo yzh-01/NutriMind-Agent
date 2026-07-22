@@ -124,6 +124,8 @@ class ChatMessageResponse(BaseModel):
     id: int
     role: str
     content: str
+    image_id: Optional[str] = None
+    image_url: Optional[str] = None
     tool_calls: List[AgentToolCall] = Field(default_factory=list)
     created_at: datetime
 

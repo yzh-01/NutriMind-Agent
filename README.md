@@ -274,7 +274,7 @@ YOLO11s (conf=0.1)
 
 ## 🖥️ 前端
 
-前端为独立仓库：[xjtuyy/NutriMind-Agent-Frontend](https://github.com/xjtuyy/NutriMind-Agent-Frontend)
+前端为独立仓库：[xjtuyy/NutriMind-Agent-Frontend](https://github.com/xjtuyy/NutriMind-Agent-Frontend) （现已合并到该仓库）
 
 - **技术栈**：Vue 3 + Vite + Vue Router + Pinia + Axios + Element Plus
 - **双工作区**：用户端（AI 教练 / 拍照识别 / 知识库 / 个人档案）+ 管理端（看板 / 用户管理 / 检测监控 / 训练管理）
@@ -287,22 +287,6 @@ npm run dev        # http://localhost:3000，/api 代理到 9999
 
 ---
 
-## 🗺️ 路线图
-
-- [x] YOLO 食物检测 + LangGraph ReAct Agent
-- [x] 视觉 LLM 兜底（低置信度场景）
-- [x] 知识库 RAG（PGVector + Exa 联网 fallback）
-- [x] 训练任务全生命周期管理
-- [x] 双通道 JWT 认证
-- [x] 对话历史持久化 + 多会话（chat_sessions / chat_messages）
-- [x] 前端开发（Vue 3，[独立仓库](https://github.com/xjtuyy/NutriMind-Agent-Frontend)）
-- [ ] PyTorch CUDA 版 + GPU 推理验证
-- [ ] Refresh Token 接口
-- [ ] Alembic 数据库迁移配置
-- [ ] YOLOE 开放词汇食物检测（突破 256 类限制）
-- [ ] MinIO 对象存储接入
-
----
 
 ## 📄 License
 

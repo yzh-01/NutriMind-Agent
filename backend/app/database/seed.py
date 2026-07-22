@@ -2,7 +2,7 @@
 
 import logging
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app.database.session import Base, get_engine, get_session_local
 from app.entity.db_models import DetectionScene
@@ -34,6 +34,14 @@ def init_db() -> None:
     if needed - existing:
         logger.info("创建数据库表: %s", sorted(needed - existing))
     Base.metadata.create_all(bind=engine)
+    # create_all 不会给已有表补列；为历史部署执行安全、幂等的增量升级。
+    inspector = inspect(engine)
+    if "chat_messages" in inspector.get_table_names():
+        columns = {column["name"] for column in inspector.get_columns("chat_messages")}
+        if "image_id" not in columns:
+            logger.info("升级 chat_messages：添加 image_id 列")
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE chat_messages ADD COLUMN image_id VARCHAR(64)"))
 
 
 def init_seed() -> None:

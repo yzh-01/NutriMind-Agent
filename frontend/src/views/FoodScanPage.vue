@@ -15,7 +15,6 @@
           class="sr-only"
           type="file"
           accept="image/png,image/jpeg,image/webp"
-          capture="environment"
           @change="selectFile"
         />
 
@@ -28,8 +27,8 @@
           @drop.prevent="selectDroppedFile"
         >
           <span><CameraPlus :size="34" weight="duotone" /></span>
-          <b>选择或拍摄食物照片</b>
-          <p>点击选择，也可以把图片拖到这里。支持 JPG、PNG、WEBP，文件不超过 10 MB。</p>
+          <b>拍照或从相册选择</b>
+          <p>手机端可选择使用相机拍摄或从相册添加；电脑端也可以把图片拖到这里。支持 JPG、PNG、WEBP，文件不超过 10 MB。</p>
         </button>
 
         <div v-else class="preview">
@@ -50,7 +49,7 @@
               />
             </g>
           </svg>
-          <button type="button" aria-label="重新选择照片" @click="fileInput?.click()">
+          <button type="button" aria-label="重新拍摄或从相册选择照片" @click="fileInput?.click()">
             <ArrowsClockwise :size="19" weight="bold" />
           </button>
         </div>

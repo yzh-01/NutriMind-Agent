@@ -361,6 +361,25 @@ def test_persistent_chat_session_can_resume(db):
     assert [message.content for message in history] == ["燕麦有什么营养？", "燕麦富含膳食纤维。"]
 
 
+def test_persistent_chat_session_keeps_image_reference(db):
+    user = User(
+        id=702, username="image-history-user", email="image-history@example.com",
+        hashed_password="hash", is_active=True,
+    )
+    db.add(user)
+    db.commit()
+
+    session = chat_service.create_session(db, user.id, "image-history-001", "图片问答")
+    saved = chat_service.append_message(
+        db, session, "user", "分析这顿饭", image_id="a" * 32,
+    )
+
+    loaded = chat_service.get_session(db, user.id, "image-history-001")
+    assert saved.image_id == "a" * 32
+    assert loaded.messages[0].image_id == "a" * 32
+    assert chat_service.user_owns_image(db, user.id, "a" * 32)
+
+
 def test_agent_registers_knowledge_and_web_tools():
     tool_names = {tool.name for tool in agent_graph.AGENT_TOOLS}
     assert "search_nutrition_knowledge" in tool_names

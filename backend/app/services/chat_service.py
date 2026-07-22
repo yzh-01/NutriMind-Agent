@@ -53,11 +53,13 @@ def append_message(
     role: str,
     content: str,
     tool_calls: list[dict] | None = None,
+    image_id: str | None = None,
 ) -> ChatMessage:
     message = ChatMessage(
         session_id=session.id,
         role=role,
         content=content,
+        image_id=image_id,
         tool_calls=tool_calls or None,
     )
     session.updated_at = datetime.now()
@@ -84,3 +86,13 @@ def history_as_langchain(session: ChatSession, exclude_last: int = 0) -> list[Ba
 def delete_session(db: Session, session: ChatSession) -> None:
     db.delete(session)
     db.commit()
+
+
+def user_owns_image(db: Session, user_id: int, image_id: str) -> bool:
+    return (
+        db.query(ChatMessage.id)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .filter(ChatSession.user_id == user_id, ChatMessage.image_id == image_id)
+        .first()
+        is not None
+    )

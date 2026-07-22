@@ -5,6 +5,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -259,6 +260,8 @@ def _session_response(session, include_messages: bool = False) -> ChatSessionRes
     if include_messages:
         messages = [{
             "id": item.id, "role": item.role, "content": item.content,
+            "image_id": item.image_id,
+            "image_url": f"/api/chat/images/{item.image_id}" if item.image_id else None,
             "tool_calls": item.tool_calls or [], "created_at": item.created_at,
         } for item in session.messages]
     return ChatSessionResponse(
@@ -336,13 +339,39 @@ async def _invoke_image_chat(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     external_session_id = session_id or str(uuid.uuid4())
+    persisted_session = None
+    history = None
+    if db is not None and user_id is not None:
+        try:
+            persisted_session = chat_service.get_or_create_session(
+                db, user_id, external_session_id, message,
+            )
+            history = chat_service.history_as_langchain(persisted_session)
+            chat_service.append_message(
+                db, persisted_session, "user", message.strip(), image_id=image_id,
+            )
+        except Exception as exc:
+            db.rollback()
+            persisted_session = None
+            history = None
+            logger.warning("图片会话持久化暂不可用，降级为进程内对话: %s", exc)
     result = await run_agent(
         session_id=f"{thread_prefix}:{external_session_id}",
         user_message=message.strip(),
         image_id=image_id,
         user_id=user_id,
+        history=history,
         user_profile=_agent_profile(db, user_id),
     )
+    if persisted_session is not None:
+        try:
+            chat_service.append_message(
+                db, persisted_session, "assistant", result["response"],
+                result.get("tool_calls", []),
+            )
+        except Exception as exc:
+            db.rollback()
+            logger.warning("保存图片会话智能体回复失败: %s", exc)
     return ImageChatResponse(
         session_id=external_session_id,
         image_id=image_id,
@@ -352,6 +381,24 @@ async def _invoke_image_chat(
         tool_calls=result.get("tool_calls", []),
         analysis_result=result.get("analysis_result"),
     )
+
+
+@router.get("/images/{image_id}")
+async def get_chat_image(
+    image_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """读取当前用户历史消息中的图片，避免仅凭 image_id 越权访问。"""
+    owned = chat_service.user_owns_image(db, current_user.id, image_id)
+    if not owned:
+        raise HTTPException(status_code=404, detail="图片不存在或无权访问")
+    try:
+        path = image_store.get_path(image_id)
+    except (ValueError, FileNotFoundError):
+        raise HTTPException(status_code=404, detail="图片不存在或已过期")
+    media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+    return FileResponse(path, media_type=media_types.get(path.suffix.lower(), "application/octet-stream"))
 
 
 @router.post("/image", response_model=ImageChatResponse)
