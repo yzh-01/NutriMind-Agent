@@ -9,7 +9,7 @@ from app.database.session import get_db
 from app.entity.db_models import User
 from app.entity.schemas import ApiResponse
 from app.services.profile_service import profile_service
-from app.services.camera_service import camera_service
+from app.services.avatar_service import avatar_service
 
 router = APIRouter(prefix="/api/users/me", tags=["个人资料"])
 
@@ -68,12 +68,12 @@ async def upload_avatar(
     if not content:
         raise HTTPException(status_code=400, detail="文件为空")
 
-    info = camera_service.save_image(content, file.filename or "avatar", current_user.id)
-    current_user.avatar = f"/api/users/me/avatar/file/{info['id']}"
+    url = avatar_service.save(content, current_user.id)
+    current_user.avatar = url
     db.commit()
 
     return ApiResponse(code=200, message="头像已更新",
-                       data={"avatar": current_user.avatar, "updated_at": info["created_at"]})
+                       data={"avatar": url, "updated_at": None})
 
 
 @router.delete("/avatar", response_model=ApiResponse)
@@ -82,9 +82,7 @@ async def delete_avatar(
     db: Session = Depends(get_db),
 ):
     """移除头像。"""
-    if current_user.avatar and "/avatar/file/" in current_user.avatar:
-        old_id = current_user.avatar.rsplit("/", 1)[-1]
-        camera_service.delete_image(old_id, current_user.id)
+    avatar_service.delete(current_user.id)
     current_user.avatar = None
     db.commit()
     return ApiResponse(code=200, message="头像已移除", data={"avatar": None})
@@ -96,7 +94,11 @@ async def view_avatar(
     current_user: User = Depends(get_current_user),
 ):
     """查看头像图片。"""
-    path = camera_service.get_image_path(image_id, current_user.id)
+    try:
+        uid = int(image_id.replace(".png", ""))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="头像不存在")
+    path = avatar_service.get_path(uid)
     if path is None:
         raise HTTPException(status_code=404, detail="头像不存在")
     return FileResponse(path, media_type="image/png")
