@@ -9,6 +9,17 @@
 
 ---
 
+## 🌐 在线体验
+
+**访问地址：[NutriMind-Agent](https://nutrimind-agent.vercel.app)**
+
+- 首次使用请[注册账号](https://nutrimind-agent.vercel.app/register)，已有账号可直接[登录](https://nutrimind-agent.vercel.app/login)。
+- 线上版本部署于 Vercel，使用 Neon PostgreSQL；注册、登录和个人资料保存已通过验证。
+- 当前线上版本尚未配置千问 API Key，AI 对话、视觉模型兜底和知识库嵌入功能暂不可用。部署者在 Vercel 的生产环境变量中配置 `OPENAI_API_KEY` 并重新部署后可启用，Key 需与配置的服务商及地区匹配。
+- 管理后台仅对已授权的管理员开放；线上不提供长时间模型训练功能。
+
+---
+
 ## 📖 项目简介
 
 NutriMind-Agent 是一个端到端的智能营养分析后端服务。用户上传餐食照片并附上自然语言问题，系统通过以下流程完成分析：
